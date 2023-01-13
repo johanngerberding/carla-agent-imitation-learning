@@ -1,27 +1,23 @@
-import h5py
+import os 
 import glob 
 import cv2 
 import matplotlib.pyplot as plt 
+from torch.utils.data import DataLoader
+from dataset import ImitationLearningDataset, get_train_transform
+from agent import Network
 
 
-def main(): 
-    path = "/data/AgentHuman/SeqTrain"
-    train_files = glob.glob(path + "/*.h5")    
-    print(f"Number of training files: {len(train_files)}")
-    # per h5 file we have 200 images   
-    test = h5py.File(train_files[0], 'r')
-    print(type(test))
-    print(test.keys())
-    print(type(test['rgb']))
-    print(type(test['targets']))
-    print(test["rgb"].shape)
-    print(test["targets"].shape)
-    rgb = test["rgb"][0]
-    print(rgb.shape)
-    print(type(rgb)) 
-    cv2.imshow('image', rgb)
-    target = test["targets"][0]
-    print(target)
+def main():
+    batch_size = 8  
+    num_workers = 4 
+    root_dir = "/data/AgentHuman/SeqTrain"
+    imgs_dir = os.path.join(root_dir, "images")
+    targets_dir = os.path.join(root_dir, "targets")
+
+    dataset = ImitationLearningDataset(imgs_dir, targets_dir, transform=get_train_transform())
+    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers)
+
+    model = Network() 
 
 
 if __name__ == "__main__":

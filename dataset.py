@@ -2,22 +2,22 @@ import os
 import cv2 
 import glob 
 import numpy as np
-import torchvision 
+import torch 
 from torch.utils.data import Dataset, DataLoader 
 import albumentations as A 
 from albumentations.pytorch import ToTensorV2
-
-from utils import mean_std
 
 
 def get_train_transform(): 
     return A.Compose(
         [
-            A.Normalize(mean=(0.0, 0.0, 0.0), std=(1, 1, 1)), 
+            A.Normalize(
+                mean=(0.2543, 0.2641, 0.2714), 
+                std=(0.1730, 0.1726, 0.1726)
+            ), 
             ToTensorV2(),
         ]
     )
-
 
 
 class ImitationLearningDataset(Dataset):
@@ -34,11 +34,12 @@ class ImitationLearningDataset(Dataset):
     def __getitem__(self, idx: int): 
         target = np.loadtxt(self.targets[idx]) 
         img = cv2.imread(self.imgs[idx]) 
-        # normalize 
-        # to tensor  
+        
         if self.transform is not None: 
-            image = self.transform(image=img)['image'] 
-        return image  
+            image = self.transform(image=img)['image']
+
+        target = torch.tensor(target) 
+        return image, target  
 
 
 def main():
@@ -49,9 +50,10 @@ def main():
     # dataset = ImitationLearningDataset(root_dir)
     dataloader = DataLoader(dataset, batch_size=4, num_workers=1)
 
-    mean, std = mean_std(dataloader, 4)
-    print(mean)
-    print(std)
+    for img, target in dataloader: 
+        print(img.shape)
+        print(target.shape)
+        break
 
 if __name__ == "__main__":
     main()

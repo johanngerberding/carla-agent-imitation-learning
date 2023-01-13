@@ -112,15 +112,19 @@ class Network(nn.Module):
         self.command = CommandModule(num_commands=num_commands, dropout=dropout)
         self.control = ControlModule(actions=actions, dropout=dropout) 
 
-    def forward(self, x):
-        
-        return x
+    def forward(self, img, speed, nav):
+        img = self.perception(img)
+        speed = self.measurement(speed)
+        nav = self.command(nav)
+        # TODO 
+        # concat stuff and then output
+        return None 
 
 
 def main(): 
     num_commands = 4
     actions = 2  # acceleration & steering angle 
-    x = torch.randn((1, 3, 200, 88))
+    x = torch.randn((1, 3, 88, 200))
     speed = torch.randn((1, 1))
     nav = torch.randn((1, 4))
     print(x.size()) 
