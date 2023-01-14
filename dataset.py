@@ -25,11 +25,11 @@ def get_train_transform():
 
 class ImitationLearningDataset(Dataset):
     """CARLA Imitation Learning Dataset"""  
-    def __init__(self, imgs_dir: str, targets_dir: str, transform = None): 
+    def __init__(self, imgs_dir: str, targets_dir: str, transform = None, num_classes: int = 4): 
         self.imgs = glob.glob(imgs_dir + "/*.png")
         self.targets = glob.glob(targets_dir + "/*.txt")
         self.transform = transform 
-        self.num_classes = 4 
+        self.num_classes = num_classes 
         
 
     def __len__(self): 
@@ -41,57 +41,35 @@ class ImitationLearningDataset(Dataset):
         if self.transform is not None: 
             image = self.transform(image=img)['image']
 
-        target = torch.tensor(target) 
-        command = F.one_hot(target[24], num_classes=num_classes)
-        return image, command, target  
+        target = torch.tensor(target)
+
+        # there are some 0 values, bit hacky and not sure if correct 
+        if target[24].long() == 0: 
+            target[24] = 2
+
+        command = F.one_hot(target[24].long() - 2, num_classes=self.num_classes)
+        speed = target[10].unsqueeze(0).float() 
+
+        target = target[:3].float()
+
+        return image, speed, command.float(), target 
 
 
 def main():
     root_dir = "/data/AgentHuman/SeqTrain" 
     imgs_dir = os.path.join(root_dir, "images") 
     targets_dir = os.path.join(root_dir, "targets")
-
-
-    targets = glob.glob(targets_dir + "/*.txt")
-    brakes = [] 
-    gas = []
-    commands = []
-    gas_brake = [] 
-    for target in targets: 
-        t = np.loadtxt(target)
-        commands.append(t[24])
-        steer = t[0]
-        gas.append(t[1])
-        brakes.append(t[2])
-
-        if t[2] > 0 and t[1] > 0: 
-            print(f"gas: {t[1]}") 
-            print(f"brake: {t[2]}") 
-            gas_brake.append((t[1], t[2])) 
-
-    print(len(gas_brake))
-    """
-    plt.hist(gas)
-    plt.show()
-
-    plt.hist(brakes) 
-    plt.show()
-
-    plt.hist(commands)
-    plt.show()
-
-    print(f"Gas: {set(gas)}")
-    print(f"Brakes: {set(brakes)}")
-    print(f"commands: {set(commands)}")
+   
     dataset = ImitationLearningDataset(imgs_dir, targets_dir, transform=get_train_transform()) 
     # dataset = ImitationLearningDataset(root_dir)
     dataloader = DataLoader(dataset, batch_size=4, num_workers=1)
 
-    for img, target in dataloader: 
+    for img, speed, nav, target  in dataloader: 
         print(img.shape)
-        print(target.shape)
+        print(speed)  
+        print(nav)
+        print(target) 
         break
-    """
 
 
 if __name__ == "__main__":

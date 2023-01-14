@@ -121,25 +121,22 @@ class Network(nn.Module):
         out = torch.cat((img, speed, nav), dim=1) 
         out = self.control(out)
          
-        return out  
+        return out 
 
 
 def main(): 
     num_commands = 4
-    actions = 2  # acceleration & steering angle 
-    x = torch.randn((1, 3, 88, 200))
-    speed = torch.randn((1, 1))
+    actions = 3  # steering angle, acc, brake
+    x = torch.randn((4, 3, 88, 200))
+    speed = torch.randn((4, 1))
     # nav command is one hot vector 
-    nav = torch.randn((1, 4))
+    nav = torch.randn((4, 4))
     perception = PerceptionModule()
     out = perception(x)
-    print(out.size())
     measurements = MeasurementsModule(dropout=0.5)
     out_measure = measurements(speed)
-    print(out_measure.size())
     command = CommandModule(num_commands=num_commands, dropout=0.5)
     out_command = command(nav)
-    print(out_command.size())
 
 
     net = Network(actions, num_commands, 0.5)
