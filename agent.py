@@ -107,6 +107,7 @@ class ControlModule(nn.Module):
 
 class Network(nn.Module):
     def __init__(self, actions: int, num_commands: int, dropout: float):
+        super(Network, self).__init__() 
         self.perception = PerceptionModule()
         self.measurement = MeasurementsModule(dropout=dropout)
         self.command = CommandModule(num_commands=num_commands, dropout=dropout)
@@ -116,9 +117,11 @@ class Network(nn.Module):
         img = self.perception(img)
         speed = self.measurement(speed)
         nav = self.command(nav)
-        # TODO 
-        # concat stuff and then output
-        return None 
+
+        out = torch.cat((img, speed, nav), dim=1) 
+        out = self.control(out)
+         
+        return out  
 
 
 def main(): 
@@ -126,8 +129,8 @@ def main():
     actions = 2  # acceleration & steering angle 
     x = torch.randn((1, 3, 88, 200))
     speed = torch.randn((1, 1))
+    # nav command is one hot vector 
     nav = torch.randn((1, 4))
-    print(x.size()) 
     perception = PerceptionModule()
     out = perception(x)
     print(out.size())
@@ -137,6 +140,12 @@ def main():
     command = CommandModule(num_commands=num_commands, dropout=0.5)
     out_command = command(nav)
     print(out_command.size())
+
+
+    net = Network(actions, num_commands, 0.5)
+    out = net(x, speed, nav)
+    print(out.size())
+
 
 if __name__ == "__main__": 
     main()
