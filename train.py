@@ -16,14 +16,19 @@ def train_epoch(model, dataloader, loss_fn, optimizer, device, cfg, writer, epoc
         nav = nav.to(device)
         target = target.to(device)
         out = model(img, speed, nav)
-        loss = loss_fn(out, target)
+        steer_loss = loss_fn(out[:, 0], target[:, 0])
+        acc_loss = loss_fn(out[:, 1:], target[:, 1:])
+        loss = steer_loss + 0.5 * acc_loss
         loss.backward()
         optimizer.step()
 
         if (idx + 1) % cfg.TRAIN.PRINT_INTERVAL == 0 and idx != 0:
             print(f"epoch {epoch + 1} iteration {idx + 1} loss: {loss.item()}")
+            print(f"out: {out[0]} - target: {target[0]}")
             # wandb.log({"train_loss": loss.item()})
             writer.add_scalar('Loss/train', loss.item(), n_iter)
+            writer.add_scalar('Loss_steer/train', steer_loss.item(), n_iter)
+            writer.add_scalar('Loss_acc/train', acc_loss.item(), n_iter)
 
 
 def eval_epoch(model, dataloader, loss_fn, device, cfg, writer, epoch):
@@ -37,7 +42,10 @@ def eval_epoch(model, dataloader, loss_fn, device, cfg, writer, epoch):
 
         with torch.no_grad():
             out = model(img, speed, nav)
-        loss = loss_fn(out, target)
+
+        steer_loss = loss_fn(out[:, 0], target[:, 0])
+        acc_loss = loss_fn(out[:, 1:], target[:, 1:])
+        loss = steer_loss + 0.5 * acc_loss
 
         if (idx + 1) % cfg.VAL.PRINT_INTERVAL == 0 and idx != 0:
             print(f"epoch {epoch + 1} iteration {n_iter} loss: {loss.item()}")
