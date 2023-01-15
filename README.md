@@ -38,5 +38,7 @@ This creates `images` and `targets` folders in `SeqTrain` and `SeqVal` and extra
 * fp16 training
 * multi-gpu support (I have only one, so priority is pretty low)
 * experiments config stuff (YACS)
+* let the model drive in carla
+* evaluation of driving performance??
 
 * maybe implement the second architecture from picture up top

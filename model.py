@@ -103,14 +103,14 @@ class Network(nn.Module):
     def __init__(self, cfg):
         super(Network, self).__init__()
         self.perception = PerceptionModule()
-        self.measurement = MeasurementsModule(dropout=cfg.MODEL.DROPOUT)
+        self.measurement = MeasurementsModule(dropout=cfg.TRAIN.DROPOUT)
         self.command = CommandModule(
             num_commands=cfg.MODEL.NUM_COMMANDS,
-            dropout=cfg.MODEL.DROPOUT,
+            dropout=cfg.TRAIN.DROPOUT,
         )
         self.control = ControlModule(
             actions=cfg.MODEL.NUM_ACTIONS,
-            dropout=cfg.MODEL.DROPOUT,
+            dropout=cfg.TRAIN.DROPOUT,
         )
 
     def forward(self, img, speed, nav):
