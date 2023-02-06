@@ -7,7 +7,16 @@ from torch.utils.tensorboard import SummaryWriter
 from config import get_cfg_defaults
 
 
-def train_epoch(model, dataloader, loss_fn, optimizer, device, cfg, writer, epoch):
+def train_epoch(
+    model,
+    dataloader,
+    loss_fn,
+    optimizer,
+    device,
+    cfg,
+    writer,
+    epoch,
+):
     model.train()
     for idx, (img, speed, nav, target) in enumerate(dataloader):
         n_iter = epoch * len(dataloader) + idx + 1
@@ -21,14 +30,13 @@ def train_epoch(model, dataloader, loss_fn, optimizer, device, cfg, writer, epoc
         loss = steer_loss + 0.5 * acc_loss
         loss.backward()
         optimizer.step()
-
         if (idx + 1) % cfg.TRAIN.PRINT_INTERVAL == 0 and idx != 0:
-            print(f"epoch {epoch + 1} iteration {idx + 1} loss: {loss.item()}")
-            print(f"out: {out[0]} - target: {target[0]}")
+            print(f"train: epoch {epoch + 1} iteration {n_iter} loss: {loss.item()}")
+            # print(f"out: {out[0]} - target: {target[0]}")
             # wandb.log({"train_loss": loss.item()})
-            writer.add_scalar('Loss/train', loss.item(), n_iter)
-            writer.add_scalar('Loss_steer/train', steer_loss.item(), n_iter)
-            writer.add_scalar('Loss_acc/train', acc_loss.item(), n_iter)
+            writer.add_scalar('MSELoss/train', loss.item(), n_iter)
+            writer.add_scalar('MSELoss_steer/train', steer_loss.item(), n_iter)
+            writer.add_scalar('MSELoss_acc/train', acc_loss.item(), n_iter)
 
 
 def eval_epoch(model, dataloader, loss_fn, device, cfg, writer, epoch):
@@ -48,9 +56,11 @@ def eval_epoch(model, dataloader, loss_fn, device, cfg, writer, epoch):
         loss = steer_loss + 0.5 * acc_loss
 
         if (idx + 1) % cfg.VAL.PRINT_INTERVAL == 0 and idx != 0:
-            print(f"epoch {epoch + 1} iteration {n_iter} loss: {loss.item()}")
+            print(f"val: epoch {epoch + 1} iteration {n_iter} loss: {loss.item()}")
             # wandb.log({"val_loss": loss.item()})
-            writer.add_scalar('Loss/val', loss.item(), n_iter)
+            writer.add_scalar('MSELoss/val', loss.item(), n_iter)
+            writer.add_scalar('MSELoss_steer/val', steer_loss.item(), n_iter)
+            writer.add_scalar('MSELoss_acc/val', acc_loss.item(), n_iter)
 
 
 def main():
@@ -103,7 +113,16 @@ def main():
     loss_fn = torch.nn.MSELoss()
 
     for epoch in range(cfg.TRAIN.NUM_EPOCHS):
-        train_epoch(model, train_dataloader, loss_fn, optimizer, device, cfg, writer, epoch)
+        train_epoch(
+            model,
+            train_dataloader,
+            loss_fn,
+            optimizer,
+            device,
+            cfg,
+            writer,
+            epoch,
+        )
         eval_epoch(model, val_dataloader, loss_fn, device, cfg, writer, epoch)
 
 
