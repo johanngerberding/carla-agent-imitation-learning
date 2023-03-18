@@ -1,11 +1,13 @@
+import os
 import torch
+import shutil
 # import wandb
 from torch.utils.data import DataLoader
 from dataset import ImitationLearningDataset
 from model import Network
 from torch.utils.tensorboard import SummaryWriter
 from config import get_cfg_defaults
-
+from datetime import datetime
 
 def train_epoch(
     model,
@@ -18,7 +20,7 @@ def train_epoch(
     epoch,
 ):
     model.train()
-    for idx, (img, speed, nav, target) in enumerate(dataloader):
+    for idx, (org_img, img, speed, nav, target) in enumerate(dataloader):
         n_iter = epoch * len(dataloader) + idx + 1
         img = img.to(device)
         speed = speed.to(device)
@@ -41,7 +43,7 @@ def train_epoch(
 
 def eval_epoch(model, dataloader, loss_fn, device, cfg, writer, epoch):
     model.eval()
-    for idx, (img, speed, nav, target) in enumerate(dataloader):
+    for idx, (org_img, img, speed, nav, target) in enumerate(dataloader):
         n_iter = epoch * len(dataloader) + idx + 1
         img = img.to(device)
         speed = speed.to(device)
@@ -70,6 +72,18 @@ def main():
         cfg.merge_from_list(opts)
     cfg.freeze()
     writer = SummaryWriter()
+    td = datetime.now().strftime("%Y-%m-%d")
+    exp_dir = f"exps/{td}"
+    exp_dir = os.path.join(os.path.abspath(os.getcwd()), exp_dir)
+    print(f"Experiment folder: {exp_dir}")
+    if not os.path.isdir(exp_dir):
+        os.makedirs(exp_dir)
+    else:
+        shutil.rmtree(exp_dir)
+
+    ckpts_dir = os.path.join(exp_dir, "checkpoints")
+    if not os.path.isdir(ckpts_dir):
+        os.makedirs(ckpts_dir)
     """
     wandb_args = {
         "epochs": cfg.TRAIN.NUM_EPOCHS,
@@ -124,6 +138,9 @@ def main():
             epoch,
         )
         eval_epoch(model, val_dataloader, loss_fn, device, cfg, writer, epoch)
+        checkp = os.path.join(ckpts_dir, f"epoch-{str(epoch + 1).zfill(3)}")
+        torch.save(model, checkp)
+        print(f"Saved checkpoint: {checkp}")
 
 
 if __name__ == "__main__":

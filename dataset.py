@@ -59,9 +59,9 @@ class ImitationLearningDataset(Dataset):
 
     def __getitem__(self, idx: int):
         target = np.loadtxt(self.targets[idx])
-        img = cv2.imread(self.imgs[idx])
+        org_image = cv2.imread(self.imgs[idx])
         if self.transform is not None:
-            image = self.transform(image=img)['image']
+            image = self.transform(image=org_image)['image']
 
         target = torch.tensor(target)
 
@@ -77,4 +77,4 @@ class ImitationLearningDataset(Dataset):
 
         target = target[:3].float()
 
-        return image, speed, command.float(), target
+        return org_image, image, speed, command.float(), target
