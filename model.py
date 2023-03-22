@@ -46,7 +46,7 @@ class PerceptionModule(nn.Module):
         self.fc1 = nn.Linear(in_features=8192, out_features=512)
         self.fc2 = nn.Linear(in_features=512, out_features=512)
         self.act = nn.ReLU()
-        self.fc_dropout = nn.Dropout(p=0.5)
+        self.fc_dropout = nn.Dropout(p=0.3)
 
     def forward(self, x):
         x = self.conv(x)
@@ -122,3 +122,37 @@ class Network(nn.Module):
         out = self.control(out)
 
         return out
+
+
+class BranchedNetwork(nn.Module):
+    def __init__(self, cfg):
+        super(BranchedNetwork, self).__init__()
+        self.perception = PerceptionModule()
+        self.measurement = MeasurementsModule(dropout=cfg.TRAIN.DROPOUT)
+        self.embedding = nn.Sequential(
+            nn.Linear(512 + 128, 512),
+            nn.Dropout(0.5),
+            nn.ReLU(),
+        )
+        self.control_branches = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(512, 256),
+                    nn.Dropout(0.5),
+                    nn.ReLU(),
+                    nn.Linear(256, 256),
+                    nn.ReLU(),
+                    nn.Linear(256, 3)
+                ) for _ in range(4)
+            ]
+        )
+
+    def forward(self, img, speed):
+        img = self.perception(img)
+        speed = self.measurement(speed)
+        embed = torch.cat([img, speed], dim=1)
+        embed = self.embedding(embed)
+        control = torch.cat(
+            [branch(embed) for branch in self.control_branches], dim=1
+        )
+        return control

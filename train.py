@@ -3,59 +3,112 @@ import torch
 import shutil
 # import wandb
 from torch.utils.data import DataLoader
+from torch.nn import Module
 from dataset import ImitationLearningDataset
-from model import Network
+from model import Network, BranchedNetwork
 from torch.utils.tensorboard import SummaryWriter
 from config import get_cfg_defaults
 from datetime import datetime
 
+
 def train_epoch(
-    model,
-    dataloader,
+    model: Module,
+    dataloader: DataLoader,
     loss_fn,
     optimizer,
     device,
     cfg,
-    writer,
-    epoch,
+    writer: SummaryWriter,
+    epoch: int,
 ):
     model.train()
-    for idx, (org_img, img, speed, nav, target) in enumerate(dataloader):
+    for idx, (org_img, img, speed, nav_mask, target) in enumerate(dataloader):
         n_iter = epoch * len(dataloader) + idx + 1
         img = img.to(device)
         speed = speed.to(device)
-        nav = nav.to(device)
+        nav_mask = nav_mask.to(device)
         target = target.to(device)
-        out = model(img, speed, nav)
-        steer_loss = loss_fn(out[:, 0], target[:, 0])
-        acc_loss = loss_fn(out[:, 1:], target[:, 1:])
-        loss = steer_loss + 0.5 * acc_loss
-        loss.backward()
+
+        if cfg.MODEL.BRANCHED:
+            out = model(img, speed)
+            target = target * nav_mask
+            out = out * nav_mask
+            steer_loss = loss_fn(
+                out.reshape((-1, 4, 3))[:, 0],
+                target.reshape((-1, 4, 3))[:, 0],
+            )
+            acc_loss = loss_fn(
+                out.reshape((-1, 4, 3))[:, 1],
+                target.reshape((-1, 4, 3))[:, 1],
+            )
+            brake_loss = loss_fn(
+                out.reshape((-1, 4, 3))[:, 2],
+                target.reshape((-1, 4, 3))[:, 2],
+            )
+            loss = steer_loss + 0.5 * (acc_loss + brake_loss)
+            loss.backward()
+        else:
+            out = model(img, speed, nav_mask)
+            steer_loss = loss_fn(out[:, 0], target[:, 0])
+            acc_loss = loss_fn(out[:, 1], target[:, 1])
+            brake_loss = loss_fn(out[:, 2], target[:, 2])
+            loss = steer_loss + 0.5 * (acc_loss + brake_loss)
+            loss.backward()
+
         optimizer.step()
         if (idx + 1) % cfg.TRAIN.PRINT_INTERVAL == 0 and idx != 0:
             print(f"train: epoch {epoch + 1} iteration {n_iter} loss: {loss.item()}")
-            # print(f"out: {out[0]} - target: {target[0]}")
             # wandb.log({"train_loss": loss.item()})
             writer.add_scalar('MSELoss/train', loss.item(), n_iter)
             writer.add_scalar('MSELoss_steer/train', steer_loss.item(), n_iter)
             writer.add_scalar('MSELoss_acc/train', acc_loss.item(), n_iter)
+            writer.add_scalar('MSELoss_brake/train', brake_loss.item(), n_iter)
 
 
-def eval_epoch(model, dataloader, loss_fn, device, cfg, writer, epoch):
+def eval_epoch(
+    model: Module,
+    dataloader: DataLoader,
+    loss_fn,
+    device,
+    cfg,
+    writer: SummaryWriter,
+    epoch: int
+):
     model.eval()
-    for idx, (org_img, img, speed, nav, target) in enumerate(dataloader):
+    for idx, (org_img, img, speed, nav_mask, target) in enumerate(dataloader):
         n_iter = epoch * len(dataloader) + idx + 1
         img = img.to(device)
         speed = speed.to(device)
-        nav = nav.to(device)
+        nav_mask = nav_mask.to(device)
         target = target.to(device)
 
-        with torch.no_grad():
-            out = model(img, speed, nav)
+        if cfg.MODEL.BRANCHED:
+            with torch.no_grad():
+                out = model(img, speed)
+            out = out * nav_mask
+            target = target * nav_mask
+            steer_loss = loss_fn(
+                out.reshape((-1, 4, 3))[:, 0],
+                target.reshape((-1, 4, 3))[:, 0],
+            )
+            acc_loss = loss_fn(
+                out.reshape((-1, 4, 3))[:, 1],
+                target.reshape((-1, 4, 3))[:, 1],
+            )
+            brake_loss = loss_fn(
+                out.reshape((-1, 4, 3))[:, 2],
+                target.reshape((-1, 4, 3))[:, 2],
+            )
+            loss = steer_loss + 0.5 * (acc_loss + brake_loss)
 
-        steer_loss = loss_fn(out[:, 0], target[:, 0])
-        acc_loss = loss_fn(out[:, 1:], target[:, 1:])
-        loss = steer_loss + 0.5 * acc_loss
+        else:
+            with torch.no_grad():
+                out = model(img, speed, nav_mask)
+
+            steer_loss = loss_fn(out[:, 0], target[:, 0])
+            acc_loss = loss_fn(out[:, 1], target[:, 1])
+            brake_loss = loss_fn(out[:, 2], target[:, 2])
+            loss = steer_loss + 0.5 * (acc_loss + brake_loss)
 
         if (idx + 1) % cfg.VAL.PRINT_INTERVAL == 0 and idx != 0:
             print(f"val: epoch {epoch + 1} iteration {n_iter} loss: {loss.item()}")
@@ -63,6 +116,7 @@ def eval_epoch(model, dataloader, loss_fn, device, cfg, writer, epoch):
             writer.add_scalar('MSELoss/val', loss.item(), n_iter)
             writer.add_scalar('MSELoss_steer/val', steer_loss.item(), n_iter)
             writer.add_scalar('MSELoss_acc/val', acc_loss.item(), n_iter)
+            writer.add_scalar('MSELoss_brake/val', brake_loss.item(), n_iter)
 
 
 def main():
@@ -111,7 +165,11 @@ def main():
         shuffle=True,
     )
 
-    model = Network(cfg)
+    if cfg.MODEL.BRANCHED:
+        model = BranchedNetwork(cfg)
+    else:
+        model = Network(cfg)
+
     model.to(device)
     model.train()
     # wandb.watch(model, log_freq=100)
@@ -138,7 +196,7 @@ def main():
             epoch,
         )
         eval_epoch(model, val_dataloader, loss_fn, device, cfg, writer, epoch)
-        checkp = os.path.join(ckpts_dir, f"epoch-{str(epoch + 1).zfill(3)}")
+        checkp = os.path.join(ckpts_dir, f"epoch-{str(epoch + 1).zfill(3)}.pth")
         torch.save(model, checkp)
         print(f"Saved checkpoint: {checkp}")
 

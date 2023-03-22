@@ -11,6 +11,15 @@ from albumentations.pytorch import ToTensorV2
 def get_train_transform():
     return A.Compose(
         [
+            A.RandomBrightnessContrast(p=0.3),
+            A.HueSaturationValue(p=0.3),
+            A.CLAHE(p=0.2),
+            A.OneOf([
+                A.RandomRain(),
+                A.RandomFog(),
+                A.Solarize(),
+                A.RandomSnow(),
+            ], p=0.3),
             A.Normalize(
                 mean=(0.2543, 0.2641, 0.2714),
                 std=(0.1730, 0.1726, 0.1726)
@@ -38,7 +47,6 @@ class ImitationLearningDataset(Dataset):
         self,
         cfg,
         mode: str,
-        num_classes: int = 4
     ):
         if mode == "train":
             imgs_dir = cfg.DATA.TRAIN_IMGS_DIR
@@ -52,7 +60,8 @@ class ImitationLearningDataset(Dataset):
         self.transform = (
             get_train_transform() if mode == "train" else get_val_transform()
         )
-        self.num_classes = num_classes
+        self.num_classes = cfg.MODEL.NUM_COMMANDS
+        self.branched = cfg.MODEL.BRANCHED
 
     def __len__(self):
         return len(self.imgs)
@@ -69,12 +78,19 @@ class ImitationLearningDataset(Dataset):
         if target[24].long() == 0:
             target[24] = 2
 
-        command = F.one_hot(
-            target[24].long() - 2,
+        command = target[24].long() - 2
+
+        cmd = F.one_hot(
+            command,
             num_classes=self.num_classes
         )
         speed = target[10].unsqueeze(0).float()
 
-        target = target[:3].float()
+        if self.branched:
+            mask = torch.zeros((4, 3))
+            mask[command, :] = 1
+            target = torch.stack([target[:3] for _ in range(4)], dim=0)
+            return org_image, image, speed, mask.reshape(-1), target.reshape(-1)
 
-        return org_image, image, speed, command.float(), target
+        target = target[:3].float()
+        return org_image, image, speed, cmd.float(), target
