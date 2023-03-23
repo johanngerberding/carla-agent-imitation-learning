@@ -2,6 +2,8 @@ import os
 import torch
 import shutil
 # import wandb
+
+from utils import AverageMeter
 from torch.utils.data import DataLoader
 from torch.nn import Module
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -10,7 +12,6 @@ from model import Network, BranchedNetwork
 from torch.utils.tensorboard import SummaryWriter
 from config import get_cfg_defaults
 from datetime import datetime
-from utils.utils import AverageMeter
 
 
 def train_epoch(
@@ -215,7 +216,9 @@ def main():
             epoch,
         )
         val_loss = eval_epoch(model, val_dataloader, loss_fn, device, cfg, writer, epoch)
+        print(f"average val loss: {val_loss}")
         scheduler.step(val_loss)
+        print(f"learning rate: {scheduler._last_lr}")
         if val_loss < best_val_loss:
             checkp = os.path.join(ckpts_dir, "best.pth")
             torch.save(model, checkp)

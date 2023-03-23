@@ -1,7 +1,7 @@
 import torch
 import tqdm
 from torch.utils.data import DataLoader
-from ..config import get_cfg_defaults
+from config import get_cfg_defaults
 
 cfg = get_cfg_defaults()
 
