@@ -4,11 +4,13 @@ import shutil
 # import wandb
 from torch.utils.data import DataLoader
 from torch.nn import Module
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from dataset import ImitationLearningDataset
 from model import Network, BranchedNetwork
 from torch.utils.tensorboard import SummaryWriter
 from config import get_cfg_defaults
 from datetime import datetime
+from utils.utils import AverageMeter
 
 
 def train_epoch(
@@ -22,6 +24,8 @@ def train_epoch(
     epoch: int,
 ):
     model.train()
+    train_losses = AverageMeter()
+
     for idx, (org_img, img, speed, nav_mask, target) in enumerate(dataloader):
         n_iter = epoch * len(dataloader) + idx + 1
         img = img.to(device)
@@ -31,8 +35,8 @@ def train_epoch(
 
         if cfg.MODEL.BRANCHED:
             out = model(img, speed)
-            target = target * nav_mask
-            out = out * nav_mask
+            target = target.float() * nav_mask
+            out = out.float() * nav_mask
             steer_loss = loss_fn(
                 out.reshape((-1, 4, 3))[:, 0],
                 target.reshape((-1, 4, 3))[:, 0],
@@ -45,7 +49,7 @@ def train_epoch(
                 out.reshape((-1, 4, 3))[:, 2],
                 target.reshape((-1, 4, 3))[:, 2],
             )
-            loss = steer_loss + 0.5 * (acc_loss + brake_loss)
+            loss = (steer_loss + 0.5 * (acc_loss + brake_loss)).float()
             loss.backward()
         else:
             out = model(img, speed, nav_mask)
@@ -55,6 +59,8 @@ def train_epoch(
             loss = steer_loss + 0.5 * (acc_loss + brake_loss)
             loss.backward()
 
+        train_losses.update(loss.item(), cfg.TRAIN.BATCH_SIZE)
+
         optimizer.step()
         if (idx + 1) % cfg.TRAIN.PRINT_INTERVAL == 0 and idx != 0:
             print(f"train: epoch {epoch + 1} iteration {n_iter} loss: {loss.item()}")
@@ -63,6 +69,8 @@ def train_epoch(
             writer.add_scalar('MSELoss_steer/train', steer_loss.item(), n_iter)
             writer.add_scalar('MSELoss_acc/train', acc_loss.item(), n_iter)
             writer.add_scalar('MSELoss_brake/train', brake_loss.item(), n_iter)
+
+    return train_losses.avg
 
 
 def eval_epoch(
@@ -75,6 +83,8 @@ def eval_epoch(
     epoch: int
 ):
     model.eval()
+    val_losses = AverageMeter()
+
     for idx, (org_img, img, speed, nav_mask, target) in enumerate(dataloader):
         n_iter = epoch * len(dataloader) + idx + 1
         img = img.to(device)
@@ -110,6 +120,8 @@ def eval_epoch(
             brake_loss = loss_fn(out[:, 2], target[:, 2])
             loss = steer_loss + 0.5 * (acc_loss + brake_loss)
 
+        val_losses.update(loss.item(), cfg.VAL.BATCH_SIZE)
+
         if (idx + 1) % cfg.VAL.PRINT_INTERVAL == 0 and idx != 0:
             print(f"val: epoch {epoch + 1} iteration {n_iter} loss: {loss.item()}")
             # wandb.log({"val_loss": loss.item()})
@@ -117,6 +129,8 @@ def eval_epoch(
             writer.add_scalar('MSELoss_steer/val', steer_loss.item(), n_iter)
             writer.add_scalar('MSELoss_acc/val', acc_loss.item(), n_iter)
             writer.add_scalar('MSELoss_brake/val', brake_loss.item(), n_iter)
+
+    return val_losses.avg
 
 
 def main():
@@ -170,6 +184,7 @@ def main():
     else:
         model = Network(cfg)
 
+    model = model.float()
     model.to(device)
     model.train()
     # wandb.watch(model, log_freq=100)
@@ -182,8 +197,12 @@ def main():
     else:
         raise NotImplementedError("This optimizer is not implemented")
 
+    scheduler = ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.1, patience=5, threshold=0.0000001)
+
     loss_fn = torch.nn.MSELoss()
 
+    best_val_loss = 1000
     for epoch in range(cfg.TRAIN.NUM_EPOCHS):
         train_epoch(
             model,
@@ -195,9 +214,22 @@ def main():
             writer,
             epoch,
         )
-        eval_epoch(model, val_dataloader, loss_fn, device, cfg, writer, epoch)
-        checkp = os.path.join(ckpts_dir, f"epoch-{str(epoch + 1).zfill(3)}.pth")
-        torch.save(model, checkp)
+        val_loss = eval_epoch(model, val_dataloader, loss_fn, device, cfg, writer, epoch)
+        scheduler.step(val_loss)
+        if val_loss < best_val_loss:
+            checkp = os.path.join(ckpts_dir, "best.pth")
+            torch.save(model, checkp)
+        else:
+            checkp = os.path.join(ckpts_dir, f"epoch-{str(epoch + 1).zfill(3)}.pth")
+            checkpoints = os.listdir(ckpts_dir)
+            checkpoints.remove("best.pth")
+            while len(checkpoints) >= 3:
+                checkpoints = list(sorted(checkpoints))
+                first = checkpoints[0]
+                checkpoints.remove(first)
+
+            torch.save(model, checkp)
+
         print(f"Saved checkpoint: {checkp}")
 
 

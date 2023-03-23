@@ -155,4 +155,4 @@ class BranchedNetwork(nn.Module):
         control = torch.cat(
             [branch(embed) for branch in self.control_branches], dim=1
         )
-        return control
+        return control.float()
