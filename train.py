@@ -23,6 +23,7 @@ def train_epoch(
     cfg,
     writer: SummaryWriter,
     epoch: int,
+    loss_weights: dict,
 ):
     model.train()
     train_losses = AverageMeter()
@@ -50,14 +51,24 @@ def train_epoch(
                 out.reshape((-1, 4, 3))[:, 2],
                 target.reshape((-1, 4, 3))[:, 2],
             )
-            loss = (steer_loss + 0.5 * (acc_loss + brake_loss)).float()
+            loss = (
+                loss_weights['steer'] * steer_loss +
+                loss_weights['acc'] * acc_loss +
+                loss_weights['brake'] * brake_loss
+            )
+            optimizer.zero_grad()
             loss.backward()
         else:
             out = model(img, speed, nav_mask)
             steer_loss = loss_fn(out[:, 0], target[:, 0])
             acc_loss = loss_fn(out[:, 1], target[:, 1])
             brake_loss = loss_fn(out[:, 2], target[:, 2])
-            loss = steer_loss + 0.5 * (acc_loss + brake_loss)
+            loss = (
+                loss_weights['steer'] * steer_loss +
+                loss_weights['acc'] * acc_loss +
+                loss_weights['brake'] * brake_loss
+            )
+            optimizer.zero_grad()
             loss.backward()
 
         train_losses.update(loss.item(), cfg.TRAIN.BATCH_SIZE)
@@ -81,7 +92,8 @@ def eval_epoch(
     device,
     cfg,
     writer: SummaryWriter,
-    epoch: int
+    epoch: int,
+    loss_weights: dict,
 ):
     model.eval()
     val_losses = AverageMeter()
@@ -110,8 +122,11 @@ def eval_epoch(
                 out.reshape((-1, 4, 3))[:, 2],
                 target.reshape((-1, 4, 3))[:, 2],
             )
-            loss = steer_loss + 0.5 * (acc_loss + brake_loss)
-
+            loss = (
+                loss_weights['steer'] * steer_loss +
+                loss_weights['acc'] * acc_loss +
+                loss_weights['brake'] * brake_loss
+            )
         else:
             with torch.no_grad():
                 out = model(img, speed, nav_mask)
@@ -119,7 +134,11 @@ def eval_epoch(
             steer_loss = loss_fn(out[:, 0], target[:, 0])
             acc_loss = loss_fn(out[:, 1], target[:, 1])
             brake_loss = loss_fn(out[:, 2], target[:, 2])
-            loss = steer_loss + 0.5 * (acc_loss + brake_loss)
+            loss = (
+                loss_weights['steer'] * steer_loss +
+                loss_weights['acc'] * acc_loss +
+                loss_weights['brake'] * brake_loss
+            )
 
         val_losses.update(loss.item(), cfg.VAL.BATCH_SIZE)
 
@@ -195,33 +214,57 @@ def main():
             [p for p in model.parameters() if p.requires_grad],
             lr=cfg.TRAIN.LR,
         )
+    elif cfg.TRAIN.OPTIM == "sgd":
+        optimizer = torch.optim.SGD(
+            [p for p in model.parameters() if p.requires_grad],
+            lr=cfg.TRAIN.LR,
+            momentum=cfg.TRAIN.MOMENTUM,
+            nesterov=cfg.TRAIN.NESTEROV,
+        )
     else:
         raise NotImplementedError("This optimizer is not implemented")
 
     scheduler = ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.1, patience=5, threshold=0.0000001)
+        optimizer, mode='min', factor=0.1, patience=3, threshold=0.0000001)
 
     loss_fn = torch.nn.MSELoss()
+    loss_weights = {
+        'steer': 0.5,
+        'acc': 0.45,
+        'brake': 0.05,
+    }
 
     best_val_loss = 1000
     for epoch in range(cfg.TRAIN.NUM_EPOCHS):
-        train_epoch(
-            model,
-            train_dataloader,
-            loss_fn,
-            optimizer,
-            device,
-            cfg,
-            writer,
-            epoch,
+        train_loss = train_epoch(
+            model=model,
+            dataloader=train_dataloader,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            device=device,
+            cfg=cfg,
+            writer=writer,
+            epoch=epoch,
+            loss_weights=loss_weights
         )
-        val_loss = eval_epoch(model, val_dataloader, loss_fn, device, cfg, writer, epoch)
+        print(f"average train loss: {train_loss}")
+        val_loss = eval_epoch(
+            model=model,
+            dataloader=val_dataloader,
+            loss_fn=loss_fn,
+            device=device,
+            cfg=cfg,
+            writer=writer,
+            epoch=epoch,
+            loss_weights=loss_weights,
+        )
         print(f"average val loss: {val_loss}")
         scheduler.step(val_loss)
         print(f"learning rate: {scheduler._last_lr}")
         if val_loss < best_val_loss:
             checkp = os.path.join(ckpts_dir, "best.pth")
             torch.save(model, checkp)
+            best_val_loss = val_loss
         else:
             checkp = os.path.join(ckpts_dir, f"epoch-{str(epoch + 1).zfill(3)}.pth")
             checkpoints = os.listdir(ckpts_dir)

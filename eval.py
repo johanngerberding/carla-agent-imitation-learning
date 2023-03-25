@@ -24,7 +24,11 @@ def main():
     model.eval()
 
     loss_fn = torch.nn.MSELoss()
-
+    loss_weights = {
+        'steer': 0.5,
+        'acc': 0.45,
+        'brake': 0.05,
+    }
     val_losses = AverageMeter()
 
     for idx, (org_img, img, speed, nav_mask, target) in enumerate(val_dataloader):
@@ -50,8 +54,11 @@ def main():
                 out.reshape((-1, 4, 3))[:, 2],
                 target.reshape((-1, 4, 3))[:, 2],
             )
-            loss = steer_loss + 0.5 * (acc_loss + brake_loss)
-
+            loss = (
+                loss_weights['steer'] * steer_loss +
+                loss_weights['acc'] * acc_loss +
+                loss_weights['brake'] * brake_loss
+            )
         else:
             with torch.no_grad():
                 out = model(img, speed, nav_mask)
@@ -59,7 +66,11 @@ def main():
             steer_loss = loss_fn(out[:, 0], target[:, 0])
             acc_loss = loss_fn(out[:, 1], target[:, 1])
             brake_loss = loss_fn(out[:, 2], target[:, 2])
-            loss = steer_loss + 0.5 * (acc_loss + brake_loss)
+            loss = (
+                loss_weights['steer'] * steer_loss +
+                loss_weights['acc'] * acc_loss +
+                loss_weights['brake'] * brake_loss
+            )
 
         val_losses.update(loss.item(), cfg.VAL.BATCH_SIZE)
 
