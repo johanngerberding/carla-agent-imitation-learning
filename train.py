@@ -2,7 +2,7 @@ import os
 import torch
 import shutil
 # import wandb
-
+import yaml
 from utils import AverageMeter
 from torch.utils.data import DataLoader
 from torch.nn import Module
@@ -40,16 +40,16 @@ def train_epoch(
             target = target.float() * nav_mask
             out = out.float() * nav_mask
             steer_loss = loss_fn(
-                out.reshape((-1, 4, 3))[:, 0],
-                target.reshape((-1, 4, 3))[:, 0],
+                out.reshape((-1, 4, 3))[:, :, 0],
+                target.reshape((-1, 4, 3))[:, :, 0],
             )
             acc_loss = loss_fn(
-                out.reshape((-1, 4, 3))[:, 1],
-                target.reshape((-1, 4, 3))[:, 1],
+                out.reshape((-1, 4, 3))[:, :, 1],
+                target.reshape((-1, 4, 3))[:, :, 1],
             )
             brake_loss = loss_fn(
-                out.reshape((-1, 4, 3))[:, 2],
-                target.reshape((-1, 4, 3))[:, 2],
+                out.reshape((-1, 4, 3))[:, :, 2],
+                target.reshape((-1, 4, 3))[:, :, 2],
             )
             loss = (
                 loss_weights['steer'] * steer_loss +
@@ -111,16 +111,16 @@ def eval_epoch(
             out = out * nav_mask
             target = target * nav_mask
             steer_loss = loss_fn(
-                out.reshape((-1, 4, 3))[:, 0],
-                target.reshape((-1, 4, 3))[:, 0],
+                out.reshape((-1, 4, 3))[:, :, 0],
+                target.reshape((-1, 4, 3))[:, :, 0],
             )
             acc_loss = loss_fn(
-                out.reshape((-1, 4, 3))[:, 1],
-                target.reshape((-1, 4, 3))[:, 1],
+                out.reshape((-1, 4, 3))[:, :, 1],
+                target.reshape((-1, 4, 3))[:, :, 1],
             )
             brake_loss = loss_fn(
-                out.reshape((-1, 4, 3))[:, 2],
-                target.reshape((-1, 4, 3))[:, 2],
+                out.reshape((-1, 4, 3))[:, :, 2],
+                target.reshape((-1, 4, 3))[:, :, 2],
             )
             loss = (
                 loss_weights['steer'] * steer_loss +
@@ -159,7 +159,6 @@ def main():
     if opts:
         cfg.merge_from_list(opts)
     cfg.freeze()
-    writer = SummaryWriter()
     td = datetime.now().strftime("%Y-%m-%d")
     exp_dir = f"exps/{td}"
     exp_dir = os.path.join(os.path.abspath(os.getcwd()), exp_dir)
@@ -172,6 +171,11 @@ def main():
     ckpts_dir = os.path.join(exp_dir, "checkpoints")
     if not os.path.isdir(ckpts_dir):
         os.makedirs(ckpts_dir)
+
+    config = os.path.join(exp_dir, "config.yaml")
+    with open(config, 'w') as fp:
+        yaml.dump(cfg.dump(), fp)
+        print(f"Saved experiment config: {config}")
     """
     wandb_args = {
         "epochs": cfg.TRAIN.NUM_EPOCHS,
@@ -181,6 +185,8 @@ def main():
     }
     wandb.init(config=wandb_args)
     """
+
+    writer = SummaryWriter(log_dir=exp_dir)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     train_dataset = ImitationLearningDataset(cfg, "train")
@@ -227,7 +233,11 @@ def main():
     scheduler = ReduceLROnPlateau(
         optimizer, mode='min', factor=0.1, patience=3, threshold=0.0000001)
 
-    loss_fn = torch.nn.MSELoss()
+    if cfg.MODEL.BRANCHED:
+        loss_fn = torch.nn.MSELoss(reduction="sum")
+    else:
+        loss_fn = torch.nn.MSELoss(reduction="mean")
+
     loss_weights = {
         'steer': 0.5,
         'acc': 0.45,

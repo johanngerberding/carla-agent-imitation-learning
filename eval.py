@@ -1,3 +1,4 @@
+import os
 import torch
 from dataset import ImitationLearningDataset
 from config import get_cfg_defaults
@@ -6,8 +7,14 @@ from utils import AverageMeter
 
 
 def main():
-    checkpoint = "/home/johann/dev/conditional-imitation-learning-pytorch/exps/2023-03-23/checkpoints/best.pth"
+    exp_dir = "/home/johann/dev/conditional-imitation-learning-pytorch/exps/2023-03-23"
+    best_checkpoint = os.path.join("checkpoints/best.pth")
+    exp_cfg = os.path.join(exp_dir, "config.yaml")
     cfg = get_cfg_defaults()
+
+    if os.path.isfile(exp_cfg):
+        cfg.merge_from_file(exp_cfg)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     val_dataset = ImitationLearningDataset(cfg, "val")
@@ -18,12 +25,16 @@ def main():
         shuffle=True,
     )
 
-    model = torch.load(checkpoint)
+    model = torch.load(best_checkpoint)
     model = model.float()
     model.to(device)
     model.eval()
 
-    loss_fn = torch.nn.MSELoss()
+    if cfg.MODEL.BRANCHED:
+        loss_fn = torch.nn.MSELoss(reduction="sum")
+    else:
+        loss_fn = torch.nn.MSELoss(reduction="mean")
+
     loss_weights = {
         'steer': 0.5,
         'acc': 0.45,
@@ -43,16 +54,16 @@ def main():
             out = out * nav_mask
             target = target * nav_mask
             steer_loss = loss_fn(
-                out.reshape((-1, 4, 3))[:, 0],
-                target.reshape((-1, 4, 3))[:, 0],
+                out.reshape((-1, 4, 3))[:, :, 0],
+                target.reshape((-1, 4, 3))[:, :, 0],
             )
             acc_loss = loss_fn(
-                out.reshape((-1, 4, 3))[:, 1],
-                target.reshape((-1, 4, 3))[:, 1],
+                out.reshape((-1, 4, 3))[:, :, 1],
+                target.reshape((-1, 4, 3))[:, :, 1],
             )
             brake_loss = loss_fn(
-                out.reshape((-1, 4, 3))[:, 2],
-                target.reshape((-1, 4, 3))[:, 2],
+                out.reshape((-1, 4, 3))[:, :, 2],
+                target.reshape((-1, 4, 3))[:, :, 2],
             )
             loss = (
                 loss_weights['steer'] * steer_loss +
