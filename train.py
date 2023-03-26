@@ -1,7 +1,6 @@
 import os
 import torch
 import shutil
-# import wandb
 import yaml
 from utils import AverageMeter
 from torch.utils.data import DataLoader
@@ -56,6 +55,7 @@ def train_epoch(
                 loss_weights['acc'] * acc_loss +
                 loss_weights['brake'] * brake_loss
             )
+
             optimizer.zero_grad()
             loss.backward()
         else:
@@ -176,15 +176,6 @@ def main():
     with open(config, 'w') as fp:
         yaml.dump(cfg.dump(), fp)
         print(f"Saved experiment config: {config}")
-    """
-    wandb_args = {
-        "epochs": cfg.TRAIN.NUM_EPOCHS,
-        "initial_lr": cfg.TRAIN.LR,
-        "train_batch_size": cfg.TRAIN.BATCH_SIZE,
-        "optimizer": cfg.TRAIN.OPTIM,
-    }
-    wandb.init(config=wandb_args)
-    """
 
     writer = SummaryWriter(log_dir=exp_dir)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -206,8 +197,10 @@ def main():
     )
 
     if cfg.MODEL.BRANCHED:
+        print("Training Branched Network")
         model = BranchedNetwork(cfg)
     else:
+        print("Training Non-Branched Network")
         model = Network(cfg)
 
     model = model.float()
@@ -233,10 +226,7 @@ def main():
     scheduler = ReduceLROnPlateau(
         optimizer, mode='min', factor=0.1, patience=3, threshold=0.0000001)
 
-    if cfg.MODEL.BRANCHED:
-        loss_fn = torch.nn.MSELoss(reduction="sum")
-    else:
-        loss_fn = torch.nn.MSELoss(reduction="mean")
+    loss_fn = torch.nn.MSELoss(reduction="mean")
 
     loss_weights = {
         'steer': 0.5,

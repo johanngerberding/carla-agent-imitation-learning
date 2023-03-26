@@ -30,10 +30,7 @@ def main():
     model.to(device)
     model.eval()
 
-    if cfg.MODEL.BRANCHED:
-        loss_fn = torch.nn.MSELoss(reduction="sum")
-    else:
-        loss_fn = torch.nn.MSELoss(reduction="mean")
+    loss_fn = torch.nn.MSELoss(reduction="mean")
 
     loss_weights = {
         'steer': 0.5,
