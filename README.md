@@ -4,10 +4,11 @@ I will implement interesting Conditional Imitation Learning agents for CARLA sta
 
 # Network Architecture
 
-The authors tried two different architectures in the paper. We start with the left one.
+The authors tried two different architectures in the paper.
 
 ![network architecture](assets/network_architecture.png)
 
+Both versions are supported here. The left architecture is simply called `Network`, the other one `BranchedNetwork`. You should specify the architecture in your `config.py` because the dataset class is a bit different.
 
 # Dataset
 
@@ -37,8 +38,5 @@ This creates `images` and `targets` folders in `SeqTrain` and `SeqVal` and extra
 * lr-scheduler
 * fp16 training
 * multi-gpu support (I have only one, so priority is pretty low)
-* experiments config stuff (YACS)
 * let the model drive in carla
 * evaluation of driving performance??
-
-* maybe implement the second architecture from picture up top

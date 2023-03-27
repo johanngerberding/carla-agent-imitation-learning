@@ -7,8 +7,8 @@ from utils import AverageMeter
 
 
 def main():
-    exp_dir = "/home/johann/dev/conditional-imitation-learning-pytorch/exps/2023-03-23"
-    best_checkpoint = os.path.join("checkpoints/best.pth")
+    exp_dir = "/home/johann/dev/conditional-imitation-learning-pytorch/exps/2023-03-26"
+    best_checkpoint = os.path.join(exp_dir, "checkpoints/best.pth")
     exp_cfg = os.path.join(exp_dir, "config.yaml")
     cfg = get_cfg_defaults()
 
@@ -82,7 +82,7 @@ def main():
 
         val_losses.update(loss.item(), cfg.VAL.BATCH_SIZE)
 
-    print(f"Average validation loss: {val_losses.avg}")
+    print(f"Average validation loss: {val_losses.avg:.5f}")
 
 
 if __name__ == "__main__":
