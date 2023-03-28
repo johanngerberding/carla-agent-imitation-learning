@@ -173,8 +173,8 @@ def main():
         os.makedirs(ckpts_dir)
 
     config = os.path.join(exp_dir, "config.yaml")
-    with open(config, 'w') as fp:
-        yaml.dump(cfg.dump(), fp)
+    with open(config, 'w', encoding='utf8') as fp:
+        fp.write(cfg.dump())
         print(f"Saved experiment config: {config}")
 
     writer = SummaryWriter(log_dir=exp_dir)
